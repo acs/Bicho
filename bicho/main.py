@@ -33,6 +33,8 @@ from utils import printerr, printdbg
 
 from post_processing import IssueLogger
 
+import logging
+
 
 def main():
     """
@@ -40,6 +42,9 @@ def main():
     # Note: Default values for options are defined in
     # configuration module
     usage = 'Usage: %prog [options]'
+
+    # This s
+    logging.basicConfig(level=logging.INFO,format='%(asctime)s %(message)s')
 
     try:
         Config.set_config_options(usage)
