@@ -181,9 +181,27 @@ class TaigaTickets():
         """
         return parse(str_date).replace(tzinfo=None)
 
-    def analyze_bug(self, issue_data):
+    def analyze_bug(self, issue_data, url, auth_token):
         issue = self.parse_bug(issue_data)
+        # changes
+        url_issue = url + str(issue_data["id"])
+        request = urllib2.Request(url_issue, headers={"Authorization":"Bearer " + auth_token})
+        f = urllib2.urlopen(request)
+        changes = json.loads(f.read())
+        for change in changes:
+            c = self.parse_change(change)
+            if c is not None: issue.add_change(c)
+
         return issue
+
+    def parse_change(self, change):
+        by = People(change['user']['pk']) # name also available
+        field = "status" # just analyze this changes
+        if 'status' not in change['values_diff'].keys(): return None
+        old_value = change['values_diff']['status'][0]
+        new_value = change['values_diff']['status'][1]
+        update = parse(change['created_at'])
+        return Change(unicode(field), unicode(old_value), unicode(new_value), by, update)
 
     def parse_bug(self, issue_taigaTickets):
         # [u'comment', u'owner', u'id', u'is_closed', u'subject', u'finished_date', u'modified_date', 
@@ -264,28 +282,24 @@ class TaigaTickets():
         # A time range with all the tickets
         # self.url_issues += urllib.quote("mod_date_dt:[" + time_window + "]")
         self.url_api = Config.url
-        self.url_api += "/api/v1/"
+        self.url_api += "/api/v1"
         self.url_projects =  self.url_api + "/projects"
         self.url_issues =  self.url_api + "/issues"
         self.url_users =  self.url_api + "/users"
+        self.url_auth =  self.url_api + "/auth"
+        self.url_history =  self.url_api + "/history/issue/"
         logging.info("URL for getting projects " + self.url_projects)
 
-        # Add GET HEADER
-        # "Authorization: Bearer eyJ1c2VyX2lkIjoxfQ:1XqfAF:wck1FLZscHNeHvENMMTwKMrumR4"
-        # f = urllib.urlopen(self.url_projects)
-        auth_token = "eyJ1c2VyX2lkIjoxfQ:1XqfAF:wck1FLZscHNeHvENMMTwKMrumR4"
+        auth_token = "eyJ1c2VyX2F1dGhlbnRpY2F0aW9uX2lkIjoyfQ:1XrbHr:D6ru8RJbwIoQfShkzX5I977YgIw"
 
-#        request = urllib2.Request(self.url_projects, headers={"Authorization":"Bearer " + auth_token})
-#        f = urllib2.urlopen(request)
-#        projects = json.loads(f.read())
-#        request = urllib2.Request(self.url_users, headers={"Authorization":"Bearer " + auth_token})
-#        f = urllib2.urlopen(request)
-#        users = json.loads(f.read())
-
-        request = urllib2.Request(self.url_issues, headers={"Authorization":"Bearer " + auth_token})
+        # Authentication and get all tickets without pagination
+        # TODO: support pagination
+        headers = {}
+        headers["Authorization"] = "Bearer " + auth_token
+        headers["x-disable-pagination"] = True
+        request = urllib2.Request(self.url_issues, headers=headers)
         f = urllib2.urlopen(request)
         issues = json.loads(f.read())
-
 
         total_issues = len(issues)
         total_pages = total_issues / issues_per_query
@@ -300,10 +314,11 @@ class TaigaTickets():
 
         for issue in issues:
             try:
-                issue_data = self.analyze_bug(issue)
+                issue_data = self.analyze_bug(issue, self.url_history, auth_token)
                 if issue_data is None:
                     continue
                 bugsdb.insert_issue(issue_data, dbtrk.id)
+                remaining -= 1
             except Exception, e:
                 logging.error("Error in function analyze_bug " + str(issue['id']))
                 traceback.print_exc(file=sys.stdout)
