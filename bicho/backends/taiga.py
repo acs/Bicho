@@ -332,10 +332,14 @@ class Taiga():
         headers["x-disable-pagination"] = True
 
         # Get users info in order to change identifiers with real names
-        request = urllib2.Request(self.url_users, headers=headers)
-        f = urllib2.urlopen(request)
-        users = json.loads(f.read())
-        self.users = users
+        try:
+            request = urllib2.Request(self.url_users, headers=headers)
+            f = urllib2.urlopen(request)
+            users = json.loads(f.read())
+            self.users = users
+        except urllib2.HTTPError:
+            logging.info("You don't have permissions to get user info.")
+            self.users = None
 
         # Now we need issues, tasks and user stories
         request = urllib2.Request(self.url_issues, headers=headers)
