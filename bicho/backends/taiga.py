@@ -211,6 +211,17 @@ class Taiga():
         update = parse(change['created_at'])
         return Change(unicode(field), unicode(old_value), unicode(new_value), by, update)
 
+    def get_people(self, id):
+        people = People(id)
+        people.set_name(id)
+
+        for user in self.users:
+            if user['id'] == id:
+                people.set_name(user["full_name"])
+                people.set_email(user["email"])
+                break
+        return people
+
     def parse_bug(self, issue_taigaTickets):
         # issue:
         # [u'comment', u'owner', u'id', u'is_closed', u'subject', u'finished_date', u'modified_date',
@@ -230,8 +241,7 @@ class Taiga():
         # u'external_reference', u'milestone_name', u'project', u'points', u'created_date', u'origin_issue']
 
 
-        people = People(issue_taigaTickets["owner"])
-        people.set_name(issue_taigaTickets["owner"])
+        people = self.get_people(issue_taigaTickets["owner"])
 
         issue = TaigaIssue(issue_taigaTickets["id"],
                             "ticket",
@@ -239,8 +249,7 @@ class Taiga():
                             issue_taigaTickets["description"],
                             people,
                             self._convert_to_datetime(issue_taigaTickets["created_date"]))
-        people = People(issue_taigaTickets["assigned_to"])
-        people.set_name(issue_taigaTickets["assigned_to"])
+        people = self.get_people(issue_taigaTickets["assigned_to"])
         issue.assigned_to = people
         issue.status = issue_taigaTickets["status"]
         # No information from Taiga for this fields
@@ -321,6 +330,14 @@ class Taiga():
         headers = {}
         headers["Authorization"] = "Bearer " + auth_token
         headers["x-disable-pagination"] = True
+
+        # Get users info in order to change identifiers with real names
+        request = urllib2.Request(self.url_users, headers=headers)
+        f = urllib2.urlopen(request)
+        users = json.loads(f.read())
+        self.users = users
+
+        # Now we need issues, tasks and user stories
         request = urllib2.Request(self.url_issues, headers=headers)
         f = urllib2.urlopen(request)
         issues = json.loads(f.read())
