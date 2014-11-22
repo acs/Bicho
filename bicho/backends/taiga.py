@@ -45,7 +45,7 @@ import logging
 from storm.locals import DateTime, Desc, Int, Reference, Unicode, Bool
 
 
-class DBTaigaTicketsIssueExt(object):
+class DBTaigaIssueExt(object):
     __storm_table__ = 'issues_ext_taigaTickets'
 
     id = Int(primary=True)
@@ -66,9 +66,9 @@ class DBTaigaTicketsIssueExt(object):
         self.issue_id = issue_id
 
 
-class DBTaigaTicketsIssueExtMySQL(DBTaigaTicketsIssueExt):
+class DBTaigaIssueExtMySQL(DBTaigaIssueExt):
     """
-    MySQL subclass of L{DBTaigaTicketsIssueExt}
+    MySQL subclass of L{DBTaigaIssueExt}
     """
 
     # If the table is changed you need to remove old from database
@@ -91,23 +91,23 @@ class DBTaigaTicketsIssueExtMySQL(DBTaigaTicketsIssueExt):
                      ) ENGINE=MYISAM;'
 
 
-class DBTaigaTicketsBackend(DBBackend):
+class DBTaigaBackend(DBBackend):
     """
-    Adapter for TaigaTickets backend.
+    Adapter for Taiga backend.
     """
     def __init__(self):
-        self.MYSQL_EXT = [DBTaigaTicketsIssueExtMySQL]
+        self.MYSQL_EXT = [DBTaigaIssueExtMySQL]
 
     def insert_issue_ext(self, store, issue, issue_id):
 
         newIssue = False
 
         try:
-            db_issue_ext = store.find(DBTaigaTicketsIssueExt,
-                                      DBTaigaTicketsIssueExt.issue_id == issue_id).one()
+            db_issue_ext = store.find(DBTaigaIssueExt,
+                                      DBTaigaIssueExt.issue_id == issue_id).one()
             if not db_issue_ext:
                 newIssue = True
-                db_issue_ext = DBTaigaTicketsIssueExt(issue_id)
+                db_issue_ext = DBTaigaIssueExt(issue_id)
                 #db_issue_ext = DBSourceForgeIssueExt(issue.category, issue.group, issue_id)
 
             db_issue_ext.tags = unicode(issue.tags)
@@ -137,8 +137,8 @@ class DBTaigaTicketsBackend(DBBackend):
     def get_last_modification_date(self, store, tracker_id):
         # get last modification date (day) stored in the database
         # select date_last_updated as date from issues_ext_taigaTickets order by date
-        result = store.find(DBTaigaTicketsIssueExt)
-        aux = result.order_by(Desc(DBTaigaTicketsIssueExt.mod_date))[:1]
+        result = store.find(DBTaigaIssueExt)
+        aux = result.order_by(Desc(DBTaigaIssueExt.mod_date))[:1]
 
         for entry in aux:
             return entry.mod_date.strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -146,7 +146,7 @@ class DBTaigaTicketsBackend(DBBackend):
         return None
 
 
-class TaigaTicketsIssue(Issue):
+class TaigaIssue(Issue):
     """
     Ad-hoc Issue extension for taigaTickets's issue
     """
@@ -164,9 +164,9 @@ class TaigaTicketsIssue(Issue):
             self.mod_date = None
             self.finished_date = None
 
-class TaigaTickets():
+class Taiga():
     """
-    TaigaTickets backend
+    Taiga backend
     """
 
     project_test_file = None
@@ -233,7 +233,7 @@ class TaigaTickets():
         people = People(issue_taigaTickets["owner"])
         people.set_name(issue_taigaTickets["owner"])
 
-        issue = TaigaTicketsIssue(issue_taigaTickets["id"],
+        issue = TaigaIssue(issue_taigaTickets["id"],
                             "ticket",
                             issue_taigaTickets["subject"],
                             issue_taigaTickets["description"],
@@ -243,7 +243,7 @@ class TaigaTickets():
         people.set_name(issue_taigaTickets["assigned_to"])
         issue.assigned_to = people
         issue.status = issue_taigaTickets["status"]
-        # No information from TaigaTickets for this fields
+        # No information from Taiga for this fields
         issue.resolution = None
         if "priority" in issue_taigaTickets.keys():
             issue.priority = issue_taigaTickets["priority"]
@@ -294,7 +294,7 @@ class TaigaTickets():
         start_page = 0
 
         bugs = []
-        bugsdb = get_database(DBTaigaTicketsBackend())
+        bugsdb = get_database(DBTaigaBackend())
 
         self.url_api = Config.url+"/api/v1"
         bugsdb.insert_supported_traker("taigaIssues", "beta")
@@ -350,4 +350,4 @@ class TaigaTickets():
         nuserstories = self.parse_issues(userstories, self.url_history_userstory, auth_token, bugsdb, dbtrk_userstories.id)
         logging.info("Done. User stories analyzed:" + str(nuserstories))
 
-Backend.register_backend('taigaTickets', TaigaTickets)
+Backend.register_backend('taiga', Taiga)
