@@ -122,18 +122,18 @@ class Config():
 
         url = urlparse.urlparse(Config.url)
         check_url = urlparse.urljoin(url.scheme + '://' + url.netloc, '')
-        print("Checking URL: " + check_url)
-        req = Request(check_url)
-        try:
-            response = urlopen(req)
-        except HTTPError, e:
-            raise InvalidConfig('The server could not fulfill the request '
-                                + str(e.msg) + '(' + str(e.code) + ')')
-        except URLError, e:
-            raise InvalidConfig('We failed to reach a server. ' + str(e.reason))
-
-        except ValueError, e:
-            print("Not an URL: " + Config.url)
+#        print("Checking URL: " + check_url)
+#        req = Request(check_url)
+#        try:
+#            response = urlopen(req)
+#        except HTTPError, e:
+#            raise InvalidConfig('The server could not fulfill the request '
+#                                + str(e.msg) + '(' + str(e.code) + ')')
+#        except URLError, e:
+#            raise InvalidConfig('We failed to reach a server. ' + str(e.reason))
+#
+#        except ValueError, e:
+#            print("Not an URL: " + Config.url)
 
         if getattr(Config, 'input', None) == 'db':
             Config.check_params(['db_driver_in', 'db_user_in',

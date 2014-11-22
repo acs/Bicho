@@ -181,6 +181,14 @@ class TaigaTickets():
         """
         return parse(str_date).replace(tzinfo=None)
 
+    def remove_unicode(self, str):
+        """
+        Cleanup u'' chars indicating a unicode string
+        """
+        if (str.startswith('u\'') and str.endswith('\'')):
+            str = str[2:len(str) - 1]
+        return str
+
     def analyze_bug(self, issue_data, url, auth_token):
         issue = self.parse_bug(issue_data)
         # changes
@@ -204,10 +212,23 @@ class TaigaTickets():
         return Change(unicode(field), unicode(old_value), unicode(new_value), by, update)
 
     def parse_bug(self, issue_taigaTickets):
-        # [u'comment', u'owner', u'id', u'is_closed', u'subject', u'finished_date', u'modified_date', 
-        # u'votes', u'severity', u'description_html', u'priority', u'version', u'generated_user_stories', 
-        # u'blocked_note_html', u'type', u'status', u'description', u'tags', u'assigned_to', u'blocked_note', 
+        # issue:
+        # [u'comment', u'owner', u'id', u'is_closed', u'subject', u'finished_date', u'modified_date',
+        # u'votes', u'severity', u'description_html', u'priority', u'version', u'generated_user_stories',
+        # u'blocked_note_html', u'type', u'status', u'description', u'tags', u'assigned_to', u'blocked_note',
         # u'milestone', u'is_blocked', u'watchers', u'ref', u'project', u'created_date']
+        # task:
+        # [u'comment', u'user_story', u'us_order', u'owner', u'id', u'is_closed', u'subject', u'finished_date', u'modified_date',
+        # u'description_html', u'is_iocaine', u'version', u'milestone_slug', u'blocked_note_html', u'ref', u'status', u'description',
+        # u'tags', u'assigned_to', u'blocked_note', u'milestone', u'is_blocked', u'watchers', u'external_reference',
+        # u'project', u'taskboard_order', u'created_date']
+        # user story
+        # [u'comment', u'team_requirement', u'is_archived', u'owner', u'id', u'is_closed', u'subject', u'backlog_order',
+        # u'client_requirement', u'kanban_order', u'description_html', u'finish_date', u'modified_date', u'version',
+        # u'milestone_slug', u'blocked_note_html', u'ref', u'generated_from_issue', u'status', u'description', u'tags',
+        # u'assigned_to', u'total_points', u'blocked_note', u'milestone', u'is_blocked', u'sprint_order', u'watchers',
+        # u'external_reference', u'milestone_name', u'project', u'points', u'created_date', u'origin_issue']
+
 
         people = People(issue_taigaTickets["owner"])
         people.set_name(issue_taigaTickets["owner"])
@@ -224,29 +245,44 @@ class TaigaTickets():
         issue.status = issue_taigaTickets["status"]
         # No information from TaigaTickets for this fields
         issue.resolution = None
-        issue.priority = issue_taigaTickets["priority"]
+        if "priority" in issue_taigaTickets.keys():
+            issue.priority = issue_taigaTickets["priority"]
 
         # Extended attributes
         issue.tags = str(issue_taigaTickets["tags"])
-        issue.version = issue_taigaTickets["version"]
-        issue.type = str(issue_taigaTickets["type"])
+        if "version" in issue_taigaTickets.keys():
+            issue.version = issue_taigaTickets["version"]
+        if "type" in issue_taigaTickets.keys():
+            issue.type = str(issue_taigaTickets["type"])
         issue.project = str(issue_taigaTickets["project"])
         issue.milestone = str(issue_taigaTickets["milestone"])
         issue.comment  = str(issue_taigaTickets["comment"])
         issue.mod_date = self._convert_to_datetime(issue_taigaTickets["modified_date"])
-        if issue_taigaTickets["finished_date"] is not None:
+        if "finished_date" in issue_taigaTickets.keys() and issue_taigaTickets["finished_date"] is not None:
             issue.finished_date = self._convert_to_datetime(issue_taigaTickets["finished_date"])
+        elif "finish_date" in issue_taigaTickets.keys() and  issue_taigaTickets["finish_date"] is not None:
+            issue.finished_date = self._convert_to_datetime(issue_taigaTickets["finish_date"])
         else: issue.finished_date = None
 
         return issue
 
-    def remove_unicode(self, str):
-        """
-        Cleanup u'' chars indicating a unicode string
-        """
-        if (str.startswith('u\'') and str.endswith('\'')):
-            str = str[2:len(str) - 1]
-        return str
+    def parse_issues(self, issues, url, auth_token, bugsdb, dbtrk_id):
+        nitems = 0
+        for issue in issues:
+            try:
+                issue_data = self.analyze_bug(issue, url, auth_token)
+                if issue_data is None:
+                    continue
+                bugsdb.insert_issue(issue_data, dbtrk_id)
+                nitems += 1
+            except Exception, e:
+                logging.error("Error in function analyze_bug " + str(issue['id']))
+                traceback.print_exc(file=sys.stdout)
+            except UnicodeEncodeError:
+                logging.error("UnicodeEncodeError: the issue %s couldn't be stored"
+                         % (issue_data.issue))
+        return nitems
+
 
     def run(self):
         """
@@ -260,37 +296,25 @@ class TaigaTickets():
         bugs = []
         bugsdb = get_database(DBTaigaTicketsBackend())
 
-        # still useless in taigaTickets
-        bugsdb.insert_supported_traker("taigaTickets", "beta")
-        trk = Tracker(Config.url, "taigaTickets", "beta")
-        dbtrk = bugsdb.insert_tracker(trk)
+        self.url_api = Config.url+"/api/v1"
+        bugsdb.insert_supported_traker("taigaIssues", "beta")
+        bugsdb.insert_supported_traker("taigaTasks", "beta")
+        bugsdb.insert_supported_traker("taigaUserstories", "beta")
+        dbtrk_issues = bugsdb.insert_tracker(Tracker(self.url_api+"/issues", "taigaIssues", "beta"))
+        dbtrk_tasks = bugsdb.insert_tracker(Tracker(self.url_api+"/tasks", "taigaTasks", "beta"))
+        dbtrk_userstories = bugsdb.insert_tracker(Tracker(self.url_api+"/userstories", "taigaUserstories", "beta"))
 
-#        last_mod_date = bugsdb.get_last_modification_date(tracker_id=dbtrk.id)
-#
-#        # Date before the first ticket
-#        time_window_start = "1900-01-01T00:00:00Z"
-#        time_window_end = datetime.now().isoformat() + "Z"
-#
-#        if last_mod_date:
-#            time_window_start = last_mod_date
-#            logging.info("Last bugs analyzed were modified on: %s" % last_mod_date)
-#
-#        time_window = time_window_start + " TO  " + time_window_end
-
-        # self.url_issues = Config.url + "/search/?limit=1"
-        # self.url_issues += "&q="
-        # A time range with all the tickets
-        # self.url_issues += urllib.quote("mod_date_dt:[" + time_window + "]")
-        self.url_api = Config.url
-        self.url_api += "/api/v1"
-        self.url_projects =  self.url_api + "/projects"
         self.url_issues =  self.url_api + "/issues"
+        self.url_tasks =  self.url_api + "/tasks"
+        self.url_userstories =  self.url_api + "/userstories"
         self.url_users =  self.url_api + "/users"
         self.url_auth =  self.url_api + "/auth"
-        self.url_history =  self.url_api + "/history/issue/"
-        logging.info("URL for getting projects " + self.url_projects)
+        self.url_history_issue =  self.url_api + "/history/issue/"
+        self.url_history_task =  self.url_api + "/history/task/"
+        self.url_history_userstory =  self.url_api + "/history/userstory/"
+        logging.info("URL for getting issues " + self.url_issues)
 
-        auth_token = "eyJ1c2VyX2F1dGhlbnRpY2F0aW9uX2lkIjoyfQ:1XrbHr:D6ru8RJbwIoQfShkzX5I977YgIw"
+        auth_token = "eyJ1c2VyX2F1dGhlbnRpY2F0aW9uX2lkIjoyfQ:1XrNRx:fLCEb_ZV4A8jsY9NLbZ7i9MtXMo"
 
         # Authentication and get all tickets without pagination
         # TODO: support pagination
@@ -300,33 +324,30 @@ class TaigaTickets():
         request = urllib2.Request(self.url_issues, headers=headers)
         f = urllib2.urlopen(request)
         issues = json.loads(f.read())
+        request = urllib2.Request(self.url_tasks, headers=headers)
+        f = urllib2.urlopen(request)
+        tasks = json.loads(f.read())
+        request = urllib2.Request(self.url_userstories, headers=headers)
+        f = urllib2.urlopen(request)
+        userstories = json.loads(f.read())
+
 
         total_issues = len(issues)
         total_pages = total_issues / issues_per_query
-        print("Number of tickets: " + str(total_issues))
+        print("Number of tickets: " + str(len(issues)))
+        print("Number of tasks: " + str(len(tasks)))
+        print("Number of user stories: " + str(len(userstories)))
 
         if total_issues == 0:
             logging.info("No bugs found. Did you provide the correct url?")
             sys.exit(0)
-        remaining = total_issues
 
         # print "ETA ", (total_issues * Config.delay) / (60), "m (", (total_issues * Config.delay) / (60 * 60), "h)"
-
-        for issue in issues:
-            try:
-                issue_data = self.analyze_bug(issue, self.url_history, auth_token)
-                if issue_data is None:
-                    continue
-                bugsdb.insert_issue(issue_data, dbtrk.id)
-                remaining -= 1
-            except Exception, e:
-                logging.error("Error in function analyze_bug " + str(issue['id']))
-                traceback.print_exc(file=sys.stdout)
-            except UnicodeEncodeError:
-                logging.error("UnicodeEncodeError: the issue %s couldn't be stored"
-                         % (issue_data.issue))
-        start_page += 1
-
-        logging.info("Done. Bugs analyzed:" + str(total_issues - remaining))
+        nissues = self.parse_issues(issues, self.url_history_issue, auth_token, bugsdb, dbtrk_issues.id)
+        logging.info("Done. Issues analyzed:" + str(nissues))
+        ntasks = self.parse_issues(tasks, self.url_history_task, auth_token, bugsdb, dbtrk_tasks.id)
+        logging.info("Done. Tasks analyzed:" + str(ntasks))
+        nuserstories = self.parse_issues(userstories, self.url_history_userstory, auth_token, bugsdb, dbtrk_userstories.id)
+        logging.info("Done. User stories analyzed:" + str(nuserstories))
 
 Backend.register_backend('taigaTickets', TaigaTickets)
